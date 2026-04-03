@@ -1,0 +1,17 @@
+# 合并数据集配置（蓝牌 + 绿牌）
+# 直接引用两个数据集目录，无需复制文件
+#
+# CCPD_YOLO:      绿牌  train 5769  val 1001
+# CCPD2019_YOLO:  蓝牌  train 213507  val 99996
+# 合计:                  train 219276  val 100997
+
+train:
+  - c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\CCPD2019_YOLO\images\train
+  - c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\CCPD2020_YOLO\images\train
+
+# val 混合集（绿牌1001张 + 蓝牌1000张 = 2001张）
+val: c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\VAL_MIXED\images\val
+
+nc: 1
+names:
+  0: plate

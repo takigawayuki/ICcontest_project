@@ -1,0 +1,23 @@
+# 合并数据集配置（蓝牌 + 绿牌）
+# 直接引用两个数据集目录，无需复制文件
+#
+# CCPD2019_YOLO: 蓝牌  train 103,021  val 99,996  test 100,579
+#   - train/val 来自 ccpd_base（基础场景）
+#   - test 来自 blur/challenge/db/fn/rotate/tilt（困难场景，共 141,982 条，转换后 100,579 张）
+#
+# CCPD2020_YOLO: 绿牌  train 5,769    val 1,001   test 5,006
+#
+# 合计:               train 108,790   val 100,997
+#
+# 注：测试集不参与训练，最终评估时单独跑
+
+train:
+  - c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\CCPD2019_YOLO\images\train
+  - c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\CCPD2020_YOLO\images\train
+
+# val 混合集（绿牌1001张 + 蓝牌1000张 = 2001张）
+val: c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\VAL_MIXED\images\val
+
+nc: 1
+names:
+  0: plate
