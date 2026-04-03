@@ -44,7 +44,32 @@ ccpd_tilt.txt — 30216张，倾斜车牌
 所以这个数据集的设计思路是：用 base 训练，用各种困难场景测试泛化。单独的子集 txt 是为了让你能分场景分析模型的弱点在哪。
 
 
+CCPD2019 数据集统计如下：
+各子集图片数量
+子集	图片数量	说明
+ccpd_base	199,996	基础场景
+ccpd_challenge	50,003	高难度场景
+ccpd_tilt	30,216	倾斜角度
+ccpd_fn	20,967	远近距离
+ccpd_blur	20,611	模糊图像
+ccpd_rotate	10,053	旋转
+ccpd_db	10,132	亮度变化
+ccpd_weather	9,999	恶劣天气
+ccpd_np	3,036	无牌照
+合计	355,013	
 
+splits 划分
+划分	数量
+train.txt	100,000
+val.txt	99,996
+test.txt	141,982
+ccpd_challenge.txt	50,003
+ccpd_tilt.txt	30,216
+ccpd_fn.txt	20,967
+ccpd_blur.txt	20,611
+ccpd_rotate.txt	10,053
+ccpd_db.txt	10,132
+总图片量约 35.5 万张，train/val 合计约 20 万，test 约 14.2 万。
 
 
 

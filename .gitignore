@@ -1,0 +1,15 @@
+# 图片数据
+*.jpg
+*.png
+
+# YOLO
+*.txt
+!现存的数据集说明.txt
+!requirements_LPR.txt
+
+# Python缓存
+__pycache__/
+*.pyc
+
+# vscode
+.vscode/

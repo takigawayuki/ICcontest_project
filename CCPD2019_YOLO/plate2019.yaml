@@ -1,0 +1,11 @@
+# CCPD2019 蓝牌数据集配置（修正版，按官方 splits 划分）
+# train: 103021 张  val: 99996 张  test: 141982 张
+
+path: c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project\CCPD2019_YOLO
+train: images/train
+val:   images/val
+test:  images/test
+
+nc: 1
+names:
+  0: plate
