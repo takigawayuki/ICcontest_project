@@ -40,11 +40,14 @@ def create_dirs():
         os.makedirs(os.path.join(OUTPUT_DIR, "labels", split), exist_ok=True)
 
 
-def convert_file(img_path, dst_split, has_plate=True):
+def convert_file(img_path, dst_split, has_plate=True, prefix=""):
     """转换单张图片，返回是否成功"""
     try:
         fname = os.path.basename(img_path)
         stem  = os.path.splitext(fname)[0]
+        if prefix:
+            fname = prefix + "_" + fname
+            stem  = prefix + "_" + stem
 
         with Image.open(img_path) as img:
             img_w, img_h = img.size
@@ -92,7 +95,7 @@ def convert_from_txt(txt_filename, dst_split):
             skip += 1
             continue
 
-        if convert_file(img_path, dst_split):
+        if convert_file(img_path, dst_split, prefix=subset):
             success += 1
         else:
             skip += 1
