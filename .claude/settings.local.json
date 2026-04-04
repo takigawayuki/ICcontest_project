@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Y9000P/**)",
+      "Bash(conda info:*)"
+    ]
+  }
+}
