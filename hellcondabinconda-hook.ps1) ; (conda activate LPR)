@@ -1,0 +1,23 @@
+[33mcommit b95ca60b3218bbd022a715d0c39e1967f8b4efe8[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m)[m
+Author: Code <Code@qq.com>
+Date:   Sat Apr 4 11:15:16 2026 +0800
+
+    更新了CCPD2019的数据集
+
+[33mcommit f8fe5653adba2905b0f7f2a546f913f59d7b23a6[m
+Author: Code <Code@qq.com>
+Date:   Fri Apr 3 20:23:45 2026 +0800
+
+    clean project
+
+[33mcommit d0e79d3dab78935814d4fffb026a4bb019cffeb2[m
+Author: Code <Code@qq.com>
+Date:   Fri Apr 3 19:46:27 2026 +0800
+
+    remove jpg from git tracking
+
+[33mcommit 656383df9d334dc8dd6f5c8f3b82ea46e6076182[m
+Author: Code <Code@qq.com>
+Date:   Fri Apr 3 16:44:05 2026 +0800
+
+    first commit
