@@ -1,9 +1,9 @@
 # 合并数据集配置（蓝牌 + 绿牌）
 # 直接引用两个数据集目录，无需复制文件
 #
-# CCPD2019_YOLO: 蓝牌  train 103,021  val 99,996  test 100,579
+# CCPD2019_YOLO: 蓝牌  train 103,021  val 99,996  test 141,982
 #   - train/val 来自 ccpd_base（基础场景）
-#   - test 来自 blur/challenge/db/fn/rotate/tilt（困难场景，共 141,982 条，转换后 100,579 张）
+#   - test 来自 blur/challenge/db/fn/rotate/tilt（困难场景，共 141,982 条）
 #
 # CCPD2020_YOLO: 绿牌  train 5,769    val 1,001   test 5,006
 #

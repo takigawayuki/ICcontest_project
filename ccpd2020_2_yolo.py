@@ -104,7 +104,7 @@ def convert_split(split):
 
 
 def write_yaml(train_n, val_n, test_n):
-    yaml_path = os.path.join(OUTPUT_DIR, "plate.yaml")
+    yaml_path = os.path.join(OUTPUT_DIR, "plate2020.yaml")
     content = f"""# 车牌检测数据集配置
 # 转换自 CCPD2020 ccpd_green
 # train: {train_n} 张  val: {val_n} 张  test: {test_n} 张
