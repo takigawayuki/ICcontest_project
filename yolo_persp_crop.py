@@ -2,14 +2,24 @@
 yolo_persp_crop.py
 ==================
 流程（训练 & 实时完全一致）：
-  1. YOLO 推理 → bbox，加 5% padding 裁剪 ROI
-  2. ROI 上颜色掩膜 → 闭运算 → 最大轮廓 → minAreaRect（旋转矩形）
-  3. 透视变换 → 94×24（倾斜校正）
-  fallback：ROI 直接 resize
+  1. YOLO 推理 → bbox（含 PAD 扩边）
+  2. CLAHE 增强全图（改善暗图 / 模糊图）
+  3. Canny 边缘检测（全图，避免 ROI 裁边伪影）
+     → 裁出 ROI 内的边缘图
+     → 全部边缘点 → convex hull → minAreaRect → 4 个有向角点
+  4. order_points 排序 → 透视变换 → 94×24
+
+为何用"全部边缘点 convex hull + minAreaRect"而非"最大轮廓 + minAreaRect"：
+  - adaptiveThreshold BINARY_INV 对蓝牌（白字蓝底）结果不稳定：
+    白色字符比蓝色背景亮，BINARY_INV 可能把字符变成黑色、背景变白，
+    "最大轮廓"变成背景区域而非字符 / 车牌边界。
+  - Canny 只提取亮度梯度边缘，蓝/绿牌通用，字符笔画和车牌边框都会被检测。
+  - 将 ROI 内全部边缘点做 convex hull：凸包外轮廓等同于车牌区域的包络，
+    minAreaRect 直接给出最小有向外接矩形，即使倾斜也精确。
 
 实时调用：
     from yolo_persp_crop import process_image
-    out = process_image(model, img_bgr)
+    out = process_image(model, img_bgr)   # 返回 94×24 BGR 或 None
 """
 
 import os
@@ -24,97 +34,124 @@ CCPD2019_DIR = r"D:\Tempcode\26IC\车牌数据集\中国车牌\CCPD2019"
 CCPD2020_DIR = r"D:\Tempcode\26IC\车牌数据集\中国车牌\CCPD2020\ccpd_green"
 OUTPUT_DIR   = os.path.join(BASE_DIR, "LPR_DATA_PERSP")
 YOLO_CONF    = 0.3
-PAD          = 0.05   # bbox 各边扩边 5%，防止倾斜角点被截断
+PAD          = 0.12   # 扩边比例：让车牌边框完整进入 ROI，Canny 可看到边界
 # ====================
 
 
 # -------------------------------------------------------
-# Step 1: YOLO → ROI
+# Step 1: YOLO 推理 → bbox
 # -------------------------------------------------------
 
 def yolo_detect(model, img):
     """返回加 PAD 后的 bbox (x1,y1,x2,y2)，或 None。"""
     best_box, best_conf = None, 0.0
     for r in model(img, verbose=False, conf=YOLO_CONF):
-        if r.boxes is None: continue
+        if r.boxes is None:
+            continue
         for box in r.boxes:
             c = float(box.conf[0])
             if c > best_conf:
                 best_conf = c
                 best_box = box.xyxy[0].cpu().numpy().astype(int)
-    if best_box is None: return None
-
+    if best_box is None:
+        return None
     H, W = img.shape[:2]
     x1, y1, x2, y2 = best_box
-    pw = max(3, int((x2 - x1) * PAD))
-    ph = max(3, int((y2 - y1) * PAD))
-    return (max(0, x1-pw), max(0, y1-ph),
-            min(W, x2+pw), min(H, y2+ph))
+    pw = max(4, int((x2 - x1) * PAD))
+    ph = max(4, int((y2 - y1) * PAD))
+    return (max(0, x1 - pw), max(0, y1 - ph),
+            min(W, x2 + pw), min(H, y2 + ph))
 
 
 # -------------------------------------------------------
-# Step 2: 颜色掩膜 → minAreaRect
+# Step 2+3: CLAHE + Canny → convex hull → minAreaRect
 # -------------------------------------------------------
 
-def detect_plate_type(roi):
-    hsv   = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    total = roi.shape[0] * roi.shape[1]
-    blue_r  = np.sum(cv2.inRange(hsv, (100, 60, 60), (130, 255, 255)) > 0) / total
-    green_r = np.sum(cv2.inRange(hsv, (35,  60, 60), (85,  255, 255)) > 0) / total
-    if blue_r  > 0.05 and blue_r >= green_r: return 'blue'
-    if green_r > 0.05 and green_r >  blue_r: return 'green'
-    return 'unknown'
-
-
-def _sort_quad(pts):
-    """任意顺序 4 点 → rb→lb→lt→rt。"""
-    pts  = pts.reshape(4, 2).astype(np.float32)
-    s    = pts.sum(axis=1)
-    diff = pts[:, 1] - pts[:, 0]
-    return np.array([pts[np.argmax(s)],    # rb
-                     pts[np.argmax(diff)],  # lb
-                     pts[np.argmin(s)],     # lt
-                     pts[np.argmin(diff)]], dtype=np.float32)  # rt
-
-
-def find_quad(roi):
+def _make_edge_img(img):
     """
-    边缘检测 → 最大轮廓 → minAreaRect → 4 角点。
-    不依赖颜色分割（颜色掩膜会填满整个 ROI，minAreaRect 退化为 ROI 边界）。
-    改用 Canny 边缘检测车牌边框，能正确捕捉倾斜/旋转角度。
+    对原图做 CLAHE 增强后 Canny 边缘检测。
+    CLAHE 对暗图 / 低对比度图效果显著（CCPD2019 test 困难场景）。
     """
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    blur = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blur, 50, 150)
+    gray    = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    clahe   = cv2.createCLAHE(clipLimit=2.5, tileGridSize=(8, 8))
+    enhanced = clahe.apply(gray)
+    blur    = cv2.GaussianBlur(enhanced, (5, 5), 1.2)
+    return cv2.Canny(blur, 20, 60)
 
-    # 膨胀连接断裂边缘
-    k = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
-    edges = cv2.dilate(edges, k, iterations=2)
 
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL,
-                                   cv2.CHAIN_APPROX_SIMPLE)
-    if not contours: return None
-    cnt = max(contours, key=cv2.contourArea)
-    if cv2.contourArea(cnt) < roi.shape[0] * roi.shape[1] * 0.10:
-        return None
+def find_quad(img, x1, y1, x2, y2):
+    """
+    在完整原图上做 CLAHE+Canny，裁出 ROI 边缘图，
+    取全部边缘点做 convex hull → minAreaRect，得到有向 4 角点（ROI 坐标系）。
 
-    box = cv2.boxPoints(cv2.minAreaRect(cnt))
-    return _sort_quad(box)
+    返回 (edge_roi_uint8, box_4pts_float32) 或 (edge_roi, None)。
+    edge_roi 用于可视化。
+    """
+    edges_full = _make_edge_img(img)
+    edge_roi   = edges_full[y1:y2, x1:x2].copy()
+    h_roi, w_roi = edge_roi.shape[:2]
+
+    ys, xs = np.where(edge_roi > 0)
+    if len(xs) < 30:
+        return edge_roi, None
+
+    pts  = np.stack([xs, ys], axis=1).astype(np.float32).reshape(-1, 1, 2)
+    hull = cv2.convexHull(pts)
+
+    # 凸包面积过小（边缘太稀疏 / 全是噪声）
+    if cv2.contourArea(hull) < h_roi * w_roi * 0.04:
+        return edge_roi, None
+
+    rect = cv2.minAreaRect(hull)
+    (cx, cy), (rw, rh), angle = rect
+
+    # 保证宽 > 高（车牌横向更长）
+    if rw < rh:
+        rw, rh = rh, rw
+        angle  = angle + 90
+
+    box = cv2.boxPoints(((cx, cy), (rw, rh), angle)).astype(np.float32)
+    return edge_roi, box
 
 
 # -------------------------------------------------------
-# Step 3: 透视变换 → 94×24
+# Step 4: 质心角度排序 → rb→lb→lt→rt
 # -------------------------------------------------------
 
-def perspective_warp(roi, quad, out_w=94, out_h=24):
-    """quad: (4,2) rb→lb→lt→rt，ROI 坐标系。先 warp 到 4× 再 resize。"""
+def order_points(pts):
+    """
+    按质心角度升序排列（arctan2），起点调整为左上角（x+y 最小）。
+    输出顺序 rb→lb→lt→rt（与 perspective_warp 的 dst 对应）。
+    """
+    centroid = np.mean(pts, axis=0)
+    angles   = np.arctan2(pts[:, 1] - centroid[1],
+                          pts[:, 0] - centroid[0])
+    sorted_idx = np.argsort(angles)
+    sorted_pts = pts[sorted_idx]
+
+    top_left_idx = int(np.argmin(sorted_pts.sum(axis=1)))
+    ordered = np.roll(sorted_pts, -top_left_idx, axis=0)   # lt rt rb lb
+
+    lt, rt, rb, lb = ordered[0], ordered[1], ordered[2], ordered[3]
+    return np.array([rb, lb, lt, rt], dtype=np.float32)
+
+
+# -------------------------------------------------------
+# Step 5: 透视变换 → 94×24
+# -------------------------------------------------------
+
+def perspective_warp(img, quad, out_w=94, out_h=24):
+    """
+    quad: (4,2) float32，顺序 rb→lb→lt→rt。
+    先 warp 到 4× 中间尺寸（376×96）保证质量，再 INTER_AREA resize。
+    """
     mid_w, mid_h = out_w * 4, out_h * 4
     dst = np.array([[mid_w, mid_h],
                     [0,     mid_h],
                     [0,     0    ],
                     [mid_w, 0    ]], dtype=np.float32)
     M      = cv2.getPerspectiveTransform(quad, dst)
-    warped = cv2.warpPerspective(roi, M, (mid_w, mid_h), flags=cv2.INTER_CUBIC)
+    warped = cv2.warpPerspective(img, M, (mid_w, mid_h), flags=cv2.INTER_CUBIC)
     return cv2.resize(warped, (out_w, out_h), interpolation=cv2.INTER_AREA)
 
 
@@ -123,18 +160,26 @@ def perspective_warp(roi, quad, out_w=94, out_h=24):
 # -------------------------------------------------------
 
 def process_image(model, img, out_w=94, out_h=24):
-    """输入 BGR 原图，返回 94×24 BGR 或 None。"""
+    """
+    输入 BGR 原图，返回 94×24 BGR 或 None。
+    fallback：边缘点不足时用 bbox 四角（无倾斜矫正，保证至少有输出）。
+    """
     bbox = yolo_detect(model, img)
-    if bbox is None: return None
+    if bbox is None:
+        return None
     x1, y1, x2, y2 = bbox
     roi = img[y1:y2, x1:x2]
-    if roi.size == 0: return None
+    if roi.size == 0:
+        return None
 
-    quad = find_quad(roi)
-    if quad is not None:
-        return perspective_warp(roi, quad, out_w, out_h)
-    else:
-        return cv2.resize(roi, (out_w, out_h), interpolation=cv2.INTER_AREA)
+    _, box = find_quad(img, x1, y1, x2, y2)
+    if box is None:
+        h_roi, w_roi = roi.shape[:2]
+        box = np.array([[w_roi, h_roi], [0, h_roi],
+                        [0, 0],         [w_roi, 0]], dtype=np.float32)
+
+    quad = order_points(box)
+    return perspective_warp(roi, quad, out_w, out_h)
 
 
 # -------------------------------------------------------
@@ -165,9 +210,12 @@ def decode_plate(s):
 
 def get_plate_text(filename):
     stem = os.path.splitext(filename)[0].split('-')
-    if len(stem) < 5: return None
-    try:    return decode_plate(stem[4])
-    except: return None
+    if len(stem) < 5:
+        return None
+    try:
+        return decode_plate(stem[4])
+    except Exception:
+        return None
 
 def read_image(path):
     buf = np.fromfile(path, dtype=np.uint8)
@@ -183,18 +231,23 @@ def batch_convert(model, file_list, out_dir, tag):
     ok = skip = 0
     total = len(file_list)
     for i, (src_path, fname) in enumerate(file_list):
-        if not os.path.isfile(src_path): skip += 1; continue
+        if not os.path.isfile(src_path):
+            skip += 1; continue
         plate_text = get_plate_text(fname)
-        if plate_text is None: skip += 1; continue
+        if plate_text is None:
+            skip += 1; continue
         img = read_image(src_path)
-        if img is None: skip += 1; continue
+        if img is None:
+            skip += 1; continue
         out = process_image(model, img)
-        if out is None: skip += 1; continue
+        if out is None:
+            skip += 1; continue
         dst = os.path.join(out_dir, '{}.jpg'.format(plate_text))
         cv2.imencode('.jpg', out)[1].tofile(dst)
         ok += 1
-        if (i+1) % 500 == 0 or (i+1) == total:
-            print('  [{}] {}/{} | ok={} skip={}'.format(tag, i+1, total, ok, skip))
+        if (i + 1) % 500 == 0 or (i + 1) == total:
+            print('  [{}] {}/{} | ok={} skip={}'.format(
+                tag, i + 1, total, ok, skip))
     return ok
 
 
@@ -202,12 +255,13 @@ def collect_ccpd2019(split):
     txt = os.path.join(CCPD2019_DIR, 'splits', '{}.txt'.format(split))
     with open(txt, encoding='utf-8') as f:
         lines = [l.strip() for l in f if l.strip()]
-    return [(os.path.join(CCPD2019_DIR, p.replace('/', os.sep)), os.path.basename(p))
-            for p in lines]
+    return [(os.path.join(CCPD2019_DIR, p.replace('/', os.sep)),
+             os.path.basename(p)) for p in lines]
 
 def collect_ccpd2020(split):
     src = os.path.join(CCPD2020_DIR, split)
-    return [(os.path.join(src, f), f) for f in os.listdir(src) if f.endswith('.jpg')]
+    return [(os.path.join(src, f), f)
+            for f in os.listdir(src) if f.endswith('.jpg')]
 
 
 def main():
