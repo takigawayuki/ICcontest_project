@@ -1,12 +1,11 @@
 """
-visualize_persp.py  —  yolo_persp_crop.py 管线可视化
+visualize_persp.py  —  CCPD GT 四角点透视变换可视化
 
-每张车牌 5 列：
-  ① 原图局部（bbox+60px）+ 绿色检测框
-  ② ROI（含 PAD 扩边）
-  ③ 全图 adaptiveThreshold 裁出的 ROI 二值图 + 最大轮廓 + minAreaRect 4 角点
-  ④ 透视变换中间图（376×96）
-  ⑤ 最终输出 94×24（×6 放大）
+每张车牌 4 列：
+  ① 原图（含 GT 四角点标注）
+  ② GT 四角点放大图（bbox 区域 +60px 边距）
+  ③ 透视变换中间图（376×96）
+  ④ 最终输出 94×24（×6 放大）
 """
 
 import os, sys, random
@@ -20,24 +19,21 @@ plt.rcParams['axes.unicode_minus'] = False
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from yolo_persp_crop import (
-    yolo_detect, find_quad, order_points, perspective_warp,
-    get_plate_text, read_image,
-    YOLO_MODEL, CCPD2019_DIR, CCPD2020_DIR,
+    get_gt_corners, get_plate_text, read_image, perspective_warp,
+    CCPD2019_DIR, CCPD2020_DIR,
 )
-from ultralytics import YOLO
 
-N_SAMPLES   = 5
-FINAL_SCALE = 6
-DISP_H      = 150
+N_SAMPLES    = 5
+FINAL_SCALE  = 6
+DISP_H       = 180
 MID_W, MID_H = 376, 96
 
-STEP_NAMES = ["① 原图局部\nYOLO bbox",
-              "② ROI\n(+PAD)",
-              "③ 全图二值化ROI\n轮廓+minAreaRect",
-              "④ 透视变换\n376×96",
-              "⑤ 最终输出\n94×24"]
+STEP_NAMES = ["① 原图\nGT 四角点",
+              "② 局部放大\nGT 四角点",
+              "③ 透视变换\n376×96",
+              "④ 最终输出\n94×24"]
 
-# rb lb lt rt 顺序
+# rb lb lt rt 对应颜色
 PT_COLORS_BGR = [(0, 0, 255), (0, 140, 255), (0, 210, 0), (255, 60, 0)]
 PT_LABELS     = ['RB', 'LB', 'LT', 'RT']
 
@@ -50,105 +46,85 @@ def fit_h(img, h):
     oh, ow = img.shape[:2]
     if oh == 0: return img
     return cv2.resize(img, (max(1, int(ow * h / oh)), h),
-                      interpolation=cv2.INTER_NEAREST)
+                      interpolation=cv2.INTER_LINEAR)
 
-def draw_quad_on_img(img_bgr, quad_rb_lb_lt_rt, r=5):
-    vis = img_bgr.copy()
-    pts = quad_rb_lb_lt_rt.astype(np.int32)
+def draw_corners(img, corners_rb_lb_lt_rt, r=6):
+    """画 GT 四角点和连线。"""
+    vis = img.copy()
+    pts = corners_rb_lb_lt_rt.astype(np.int32)
     cv2.polylines(vis, [pts], True, (0, 255, 255), 2)
     for i, (x, y) in enumerate(pts):
         cv2.circle(vis, (x, y), r, PT_COLORS_BGR[i], -1)
-        cv2.putText(vis, PT_LABELS[i], (x + 3, y - 3),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, PT_COLORS_BGR[i], 1, cv2.LINE_AA)
+        cv2.putText(vis, PT_LABELS[i], (x + 4, y - 4),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, PT_COLORS_BGR[i], 1, cv2.LINE_AA)
     return vis
 
 
-def process_steps(model, src_path, filename):
+def process_steps(src_path, filename):
     plate_text = get_plate_text(filename)
     if plate_text is None:
+        return None
+    corners = get_gt_corners(filename)
+    if corners is None:
         return None
     img = read_image(src_path)
     if img is None:
         return None
     H, W = img.shape[:2]
 
-    bbox = yolo_detect(model, img)
-    if bbox is None:
-        return None
-    x1, y1, x2, y2 = bbox
-
-    roi = img[y1:y2, x1:x2].copy()
-    if roi.size == 0:
-        return None
-
-    # 颜色类型（仅用于标签）
-    hsv   = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    total = roi.shape[0] * roi.shape[1]
-    br    = np.sum(cv2.inRange(hsv, (100,60,60),(130,255,255)) > 0) / total
-    gr    = np.sum(cv2.inRange(hsv, (35, 60,60),(85, 255,255)) > 0) / total
-    ptype = 'blue' if br > 0.05 and br >= gr else ('green' if gr > 0.05 else 'unknown')
-
-    # ① 原图局部 + 检测框
-    p0 = 60
-    r0 = img[max(0,y1-p0):min(H,y2+p0), max(0,x1-p0):min(W,x2+p0)].copy()
-    ox, oy = max(0, x1-p0), max(0, y1-p0)
-    cv2.rectangle(r0, (x1-ox, y1-oy), (x2-ox, y2-oy), (0,255,0), 2)
-    s0 = r0
-    l0 = "bbox {}×{}  [{}]".format(x2-x1, y2-y1, ptype)
-
-    # ② ROI
-    s1 = roi
-    l1 = "ROI {}×{}".format(x2-x1, y2-y1)
-
-    # ③ 全图二值化 ROI + 最大轮廓 + minAreaRect
-    binary_roi, box = find_quad(img, x1, y1, x2, y2)
-    vis3 = cv2.cvtColor(binary_roi, cv2.COLOR_GRAY2BGR)
-
-    if box is not None:
-        # 画最大轮廓（绿色）
-        gray_full   = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        bin_full    = cv2.adaptiveThreshold(gray_full, 255,
-                          cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-                          cv2.THRESH_BINARY_INV, 11, 2)
-        bin_crop    = bin_full[y1:y2, x1:x2]
-        contours, _ = cv2.findContours(bin_crop, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if contours:
-            largest = max(contours, key=cv2.contourArea)
-            cv2.drawContours(vis3, [largest], -1, (0, 200, 0), 1)
-
-        quad = order_points(box)
-        vis3 = draw_quad_on_img(vis3, quad)
-        l2   = "轮廓OK · minAreaRect"
-        fallback = False
+    # 颜色类型
+    xs = corners[:, 0].astype(int)
+    ys = corners[:, 1].astype(int)
+    x1c, y1c = max(0, xs.min()), max(0, ys.min())
+    x2c, y2c = min(W, xs.max()), min(H, ys.max())
+    roi_c = img[y1c:y2c, x1c:x2c]
+    if roi_c.size > 0:
+        hsv = cv2.cvtColor(roi_c, cv2.COLOR_BGR2HSV)
+        tot = roi_c.shape[0] * roi_c.shape[1]
+        br  = np.sum(cv2.inRange(hsv, (95,35,35),(135,255,255)) > 0) / tot
+        gr  = np.sum(cv2.inRange(hsv, (30,35,35),(95, 255,255)) > 0) / tot
+        ptype = 'blue' if br > gr and br > 0.05 else ('green' if gr > 0.05 else 'unk')
     else:
-        cv2.putText(vis3, "NO QUAD", (4, vis3.shape[0]//2),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1)
-        l2 = "FALLBACK (bbox)"
-        h_r, w_r = roi.shape[:2]
-        box = np.array([[w_r,h_r],[0,h_r],[0,0],[w_r,0]], dtype=np.float32)
-        quad = order_points(box)
-        fallback = True
-    s2 = vis3
+        ptype = 'unk'
 
-    # ④ 透视变换 → 376×96
-    dst    = np.array([[MID_W,MID_H],[0,MID_H],[0,0],[MID_W,0]], dtype=np.float32)
-    M      = cv2.getPerspectiveTransform(quad, dst)
-    warped = cv2.warpPerspective(roi, M, (MID_W,MID_H), flags=cv2.INTER_CUBIC)
-    s3 = warped
-    l3 = "透视变换 376×96" + (" [fallback]" if fallback else "")
+    # ① 原图 + GT 四角点（缩小显示）
+    scale = min(1.0, 640 / max(H, W))
+    img_small = cv2.resize(img, (int(W*scale), int(H*scale)))
+    corners_small = corners * scale
+    s0 = draw_corners(img_small, corners_small, r=max(3, int(6*scale)))
+    l0 = "原图 {}×{}  [{}]".format(W, H, ptype)
 
-    # ⑤ 94×24
-    s4 = cv2.resize(warped, (94, 24), interpolation=cv2.INTER_AREA)
-    l4 = "94×24"
+    # ② 局部放大（GT bbox 区域 +60px）
+    p0 = 60
+    rx1, ry1 = max(0, x1c-p0), max(0, y1c-p0)
+    rx2, ry2 = min(W, x2c+p0), min(H, y2c+p0)
+    crop = img[ry1:ry2, rx1:rx2].copy()
+    corners_crop = corners - np.array([rx1, ry1], dtype=np.float32)
+    s1 = draw_corners(crop, corners_crop)
+    l1 = "GT 角点  [{}→{}→{}→{}]".format(*PT_LABELS)
 
-    return [s0,s1,s2,s3,s4], [l0,l1,l2,l3,l4], plate_text, ptype
+    # ③ 透视变换 → 376×96
+    mid_out = perspective_warp(img, corners, out_w=94, out_h=24)
+    # 同时计算中间图用于展示
+    src_pts = corners.astype(np.float32)
+    dst_pts = np.array([[MID_W,MID_H],[0,MID_H],[0,0],[MID_W,0]], dtype=np.float32)
+    M       = cv2.getPerspectiveTransform(src_pts, dst_pts)
+    warped  = cv2.warpPerspective(img, M, (MID_W, MID_H), flags=cv2.INTER_CUBIC)
+    s2 = warped
+    l2 = "透视变换 376×96"
+
+    # ④ 94×24
+    s3 = cv2.resize(warped, (94, 24), interpolation=cv2.INTER_AREA)
+    l3 = "94×24"
+
+    return [s0, s1, s2, s3], [l0, l1, l2, l3], plate_text, ptype
 
 
 def draw_dataset(results, title):
     n, n_col = len(results), len(STEP_NAMES)
-    fig = plt.figure(figsize=(n_col * 3.2, n * 3.0))
+    fig = plt.figure(figsize=(n_col * 3.6, n * 3.0))
     fig.suptitle(title, fontsize=13, fontweight='bold', y=1.01)
-    gs  = gridspec.GridSpec(n, n_col, figure=fig, hspace=0.18, wspace=0.06)
+    gs  = gridspec.GridSpec(n, n_col, figure=fig, hspace=0.20, wspace=0.06)
 
     for row, (steps, labels, plate_text, ptype) in enumerate(results):
         for col in range(n_col):
@@ -167,32 +143,32 @@ def draw_dataset(results, title):
             if col == 0:
                 color = '#003399' if ptype == 'blue' else '#006600'
                 ax.set_ylabel("{}\n[{}]".format(plate_text, ptype),
-                              fontsize=9, rotation=0, labelpad=75,
+                              fontsize=9, rotation=0, labelpad=80,
                               ha='right', va='center', color=color, fontweight='bold')
-    plt.tight_layout(rect=[0.09, 0, 1, 1])
+    plt.tight_layout(rect=[0.10, 0, 1, 1])
     plt.show()
 
 
-def sample_ccpd2019(n):
-    txt = os.path.join(CCPD2019_DIR, 'splits', 'train.txt')
+def sample_ccpd2019(n, split='train'):
+    txt = os.path.join(CCPD2019_DIR, 'splits', '{}.txt'.format(split))
     with open(txt, encoding='utf-8') as f:
         lines = [l.strip() for l in f if l.strip()]
-    chosen = random.sample(lines, min(n * 6, len(lines)))
+    chosen = random.sample(lines, min(n * 4, len(lines)))
     return [(os.path.join(CCPD2019_DIR, p.replace('/', os.sep)), os.path.basename(p))
             for p in chosen]
 
 def sample_ccpd2020(n):
     src   = os.path.join(CCPD2020_DIR, 'train')
     files = [f for f in os.listdir(src) if f.endswith('.jpg')]
-    chosen = random.sample(files, min(n * 6, len(files)))
+    chosen = random.sample(files, min(n * 4, len(files)))
     return [(os.path.join(src, f), f) for f in chosen]
 
-def collect(model, file_list, n):
+def collect(file_list, n):
     results = []
     for src_path, fname in file_list:
         if len(results) >= n: break
         if not os.path.isfile(src_path): continue
-        ret = process_steps(model, src_path, fname)
+        ret = process_steps(src_path, fname)
         if ret:
             results.append(ret)
             print("  [{}/{}] {} [{}]".format(len(results), n, ret[2], ret[3]))
@@ -200,16 +176,17 @@ def collect(model, file_list, n):
 
 
 def main():
-    print("加载 YOLO 模型...")
-    model = YOLO(YOLO_MODEL)
+    print("\n--- CCPD2019 train（蓝牌）---")
+    draw_dataset(collect(sample_ccpd2019(N_SAMPLES, 'train'), N_SAMPLES),
+                 "CCPD2019 train（蓝牌）· GT四角点→透视变换（倾斜完全校正）")
 
-    print("\n--- CCPD2019（蓝牌）---")
-    draw_dataset(collect(model, sample_ccpd2019(N_SAMPLES), N_SAMPLES),
-                 "CCPD2019（蓝牌）· 全图adaptiveThreshold→minAreaRect→透视变换")
+    print("\n--- CCPD2019 test（蓝牌·困难场景）---")
+    draw_dataset(collect(sample_ccpd2019(N_SAMPLES, 'test'), N_SAMPLES),
+                 "CCPD2019 test（蓝牌·困难）· GT四角点→透视变换")
 
     print("\n--- CCPD2020（绿牌）---")
-    draw_dataset(collect(model, sample_ccpd2020(N_SAMPLES), N_SAMPLES),
-                 "CCPD2020（绿牌）· 全图adaptiveThreshold→minAreaRect→透视变换")
+    draw_dataset(collect(sample_ccpd2020(N_SAMPLES), N_SAMPLES),
+                 "CCPD2020（绿牌）· GT四角点→透视变换（倾斜完全校正）")
     print("完成。")
 
 
