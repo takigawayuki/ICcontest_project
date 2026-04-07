@@ -117,6 +117,91 @@ def perspective_warp(img, quad_rb_lb_lt_rt, out_w=94, out_h=24):
 
 
 # -------------------------------------------------------
+# 图像增强（透视变换后，94×24 BGR）
+# -------------------------------------------------------
+
+def _adaptive_gamma_darken(l_channel, n_bx=3, n_by=3):
+    """
+    分块局部 Gamma 压暗（针对强光/反光）。
+    gamma > 1 才能压暗：output = (input/255)^gamma * 255
+      gamma=1 不变；gamma=2 明显压暗；gamma=3 大幅压暗
+    每块根据局部均值动态计算 gamma，均值越高 gamma 越大（压暗越狠）。
+    gamma 范围 [1.5, 3.0]。
+    l_channel: uint8 单通道（LAB 的 L 分量）
+    """
+    h, w = l_channel.shape
+    out = np.empty_like(l_channel)
+    lut_cache = {}
+    for by in range(n_by):
+        y1 = int(by * h / n_by)
+        y2 = int((by + 1) * h / n_by) if by < n_by - 1 else h
+        for bx in range(n_bx):
+            x1 = int(bx * w / n_bx)
+            x2 = int((bx + 1) * w / n_bx) if bx < n_bx - 1 else w
+            block = l_channel[y1:y2, x1:x2]
+            if block.size == 0:
+                continue
+            local_mean = float(np.mean(block))
+            # 均值越高 gamma 越大（压暗越狠）；范围 [1.5, 3.0]
+            gamma = float(np.clip(1.0 + (local_mean - 128.0) / 80.0, 1.5, 3.0))
+            g_key = round(gamma, 2)
+            if g_key not in lut_cache:
+                lut = np.array([int(((i / 255.0) ** gamma) * 255 + 0.5)
+                                for i in range(256)], dtype=np.uint8)
+                lut_cache[g_key] = lut
+            out[y1:y2, x1:x2] = lut_cache[g_key][block]
+    return out
+
+
+def roi_mean_l(img, corners):
+    """
+    在原图四角点 bbox 内计算 LAB-L 均值，用于亮度判断。
+    corners: (4,2) float32，rb→lb→lt→rt
+    """
+    H, W = img.shape[:2]
+    xs = corners[:, 0].astype(int)
+    ys = corners[:, 1].astype(int)
+    x1 = max(0, xs.min()); y1 = max(0, ys.min())
+    x2 = min(W, xs.max()); y2 = min(H, ys.max())
+    roi = img[y1:y2, x1:x2]
+    if roi.size == 0:
+        return 128.0
+    return float(np.mean(cv2.cvtColor(roi, cv2.COLOR_BGR2LAB)[:, :, 0]))
+
+
+ENHANCE_BRIGHT_THR = 211   # 原图 ROI L均值 > 211：强光处理（211~227 范围需压暗）
+ENHANCE_DARK_THR   = 146   # 原图 ROI L均值 < 146：暗场处理（121~146 范围需增强）
+
+
+def enhance_plate(plate_bgr, mean_l):
+    """
+    对 94×24 BGR 车牌图像做自适应增强。
+    mean_l: 由原图四角点 bbox 内计算的 LAB-L 均值（roi_mean_l 返回值）。
+      - 强光/反光（mean_l > ENHANCE_BRIGHT_THR）：局部自适应 Gamma 压暗高光
+      - 正常光线（范围内）：直接返回原图，不做任何处理
+      - 暗/夜间（mean_l < ENHANCE_DARK_THR）：线性拉亮到目标均值 ~110 + CLAHE（clip=4.0）
+    在 LAB 色彩空间仅处理亮度通道，不影响色相。
+    """
+    if ENHANCE_DARK_THR <= mean_l <= ENHANCE_BRIGHT_THR:
+        return plate_bgr   # 正常光线，不处理
+
+    lab = cv2.cvtColor(plate_bgr, cv2.COLOR_BGR2LAB)
+    l, a, b = cv2.split(lab)
+
+    if mean_l > ENHANCE_BRIGHT_THR:
+        # 强光：局部自适应 Gamma（3×3 分块）
+        l_out = _adaptive_gamma_darken(l, n_bx=3, n_by=3)
+    else:
+        # 暗/夜间：先线性拉亮到目标均值 ~110，再 CLAHE 增强对比度
+        scale = min(2.8, 110.0 / max(float(mean_l), 1.0))
+        l_boosted = np.clip(l.astype(np.float32) * scale, 0, 255).astype(np.uint8)
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(4, 4))
+        l_out = clahe.apply(l_boosted)
+
+    return cv2.cvtColor(cv2.merge([l_out, a, b]), cv2.COLOR_LAB2BGR)
+
+
+# -------------------------------------------------------
 # YOLO 推理（实时模式用）
 # -------------------------------------------------------
 
@@ -186,8 +271,10 @@ def batch_convert_with_gt(file_list, out_dir, tag):
         if img is None:
             skip += 1; continue
 
-        # corners 是图像坐标系的 rb→lb→lt→rt，直接透视变换
-        out = perspective_warp(img, corners)
+        # corners 是图像坐标系的 rb→lb→lt→rt，直接透视变换 + 图像增强
+        # 亮度在原图四角点区域内计算，避免 warp 后失真
+        mean_l = roi_mean_l(img, corners)
+        out = enhance_plate(perspective_warp(img, corners), mean_l)
         dst = os.path.join(out_dir, '{}.jpg'.format(plate_text))
         cv2.imencode('.jpg', out)[1].tofile(dst)
         ok += 1

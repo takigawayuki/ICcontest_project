@@ -20,6 +20,7 @@ plt.rcParams['axes.unicode_minus'] = False
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from yolo_persp_crop import (
     get_gt_corners, get_plate_text, read_image, perspective_warp,
+    enhance_plate, roi_mean_l,
     CCPD2019_DIR, CCPD2020_DIR,
 )
 
@@ -31,7 +32,8 @@ MID_W, MID_H = 376, 96
 STEP_NAMES = ["① 原图\nGT 四角点",
               "② 局部放大\nGT 四角点",
               "③ 透视变换\n376×96",
-              "④ 最终输出\n94×24"]
+              "④ 原始输出\n94×24",
+              "⑤ 增强后\n94×24"]
 
 # rb lb lt rt 对应颜色
 PT_COLORS_BGR = [(0, 0, 255), (0, 140, 255), (0, 210, 0), (255, 60, 0)]
@@ -103,9 +105,7 @@ def process_steps(src_path, filename):
     s1 = draw_corners(crop, corners_crop)
     l1 = "GT 角点  [{}→{}→{}→{}]".format(*PT_LABELS)
 
-    # ③ 透视变换 → 376×96
-    mid_out = perspective_warp(img, corners, out_w=94, out_h=24)
-    # 同时计算中间图用于展示
+    # ③ 透视变换 → 376×96（展示用中间图）
     src_pts = corners.astype(np.float32)
     dst_pts = np.array([[MID_W,MID_H],[0,MID_H],[0,0],[MID_W,0]], dtype=np.float32)
     M       = cv2.getPerspectiveTransform(src_pts, dst_pts)
@@ -113,23 +113,33 @@ def process_steps(src_path, filename):
     s2 = warped
     l2 = "透视变换 376×96"
 
-    # ④ 94×24
+    # ④ 94×24（原始）
     s3 = cv2.resize(warped, (94, 24), interpolation=cv2.INTER_AREA)
-    l3 = "94×24"
+    l3 = "94×24（原始）"
 
-    return [s0, s1, s2, s3], [l0, l1, l2, l3], plate_text, ptype
+    # ⑤ 94×24（增强后）—— 亮度在原图四角点区域内判断
+    mean_l = roi_mean_l(img, corners)
+    s4 = enhance_plate(s3, mean_l)
+    if   mean_l > 211: emode = "Gamma压暗(强光)"
+    elif mean_l < 146: emode = "线性拉亮+CLAHE"
+    else:              emode = "无需增强"
+    l4 = "原图ROI亮度={:.0f} {}\n增强后L={:.0f}".format(
+        mean_l, emode,
+        float(np.mean(cv2.cvtColor(s4, cv2.COLOR_BGR2LAB)[:, :, 0])))
+
+    return [s0, s1, s2, s3, s4], [l0, l1, l2, l3, l4], plate_text, ptype
 
 
 def draw_dataset(results, title):
     n, n_col = len(results), len(STEP_NAMES)
-    fig = plt.figure(figsize=(n_col * 3.6, n * 3.0))
+    fig = plt.figure(figsize=(n_col * 3.2, n * 3.0))
     fig.suptitle(title, fontsize=13, fontweight='bold', y=1.01)
     gs  = gridspec.GridSpec(n, n_col, figure=fig, hspace=0.20, wspace=0.06)
 
     for row, (steps, labels, plate_text, ptype) in enumerate(results):
         for col in range(n_col):
             ax = fig.add_subplot(gs[row, col])
-            if col == n_col - 1:
+            if col >= 3:   # ④ 原始 94×24 和 ⑤ 增强后 94×24 都放大显示
                 disp = bgr2rgb(cv2.resize(steps[col],
                                (94*FINAL_SCALE, 24*FINAL_SCALE),
                                interpolation=cv2.INTER_NEAREST))
