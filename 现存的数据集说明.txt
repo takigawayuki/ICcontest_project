@@ -74,17 +74,6 @@ ccpd_db.txt	10,132
 
 
 
-/*************************************************************/
-重新训练的完整步骤
-① 删除旧的 CCPD2019_YOLO 目录 已经删除并更正
-② 运行修正后的 ccpd2019_to_yolo.py 已运行
-③ 更新 plate_merged.yaml（train 数量变了） 已做，new_plate_merged.yaml 
-④ 更新 VAL_MIXED（重新抽样） 未做 
-⑤ 重新运行 train.py 未做
-
-
-
-
 
 
 /*************************************************************/
@@ -112,8 +101,37 @@ mAP50-95 = 0.621
 
 
 /*************************************************************/
+2026-4-7
+preprocess_fpga.py
+preprocess_fpga_流程说明.md
+visualize_preprocess.py
+效果很差基本没啥用
+
+yolo_persp_crop.py：ccpd转lpr
+visualize_persp.py：最小测试脚本，可视化的是图像预处理，跟分类没关系
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*************************************************************/
+重新训练的完整步骤
+① 删除旧的 CCPD2019_YOLO 目录 已经删除并更正
+② 运行修正后的 ccpd2019_to_yolo.py 已运行
+③ 更新 plate_merged.yaml（train 数量变了） 已做，new_plate_merged.yaml 
+④ 更新 VAL_MIXED（重新抽样） 未做 
+⑤ 重新运行 train.py 未做
 
 
 

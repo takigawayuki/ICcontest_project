@@ -202,6 +202,36 @@ def enhance_plate(plate_bgr, mean_l):
 
 
 # -------------------------------------------------------
+# HSV 颜色分类（蓝牌 / 绿牌）
+# -------------------------------------------------------
+
+def hsv_classify(plate_bgr):
+    """
+    对透视变换后的 94×24 BGR 车牌图像做颜色分类。
+    蓝牌：H ∈ [100, 130]，S > 60，V > 60
+    绿牌：H ∈ [35,  85]，S > 60，V > 60
+    返回 "blue" / "green" / "unk"
+    """
+    hsv = cv2.cvtColor(plate_bgr, cv2.COLOR_BGR2HSV)
+    s = hsv[:, :, 1]
+    v = hsv[:, :, 2]
+    h = hsv[:, :, 0]
+    valid = (s > 45) & (v > 40)   # 排除低饱和度（白/黑字区域）
+    total = float(np.count_nonzero(valid))
+    # if total == 0:
+    if total < 50:
+        return "unk"
+    h_valid = h[valid]
+    blue_ratio  = np.count_nonzero((h_valid >= 100) & (h_valid <= 130)) / total
+    green_ratio = np.count_nonzero((h_valid >=  40) & (h_valid <=  80)) / total
+    if blue_ratio > green_ratio and blue_ratio > 0.15:
+        return "blue"
+    if green_ratio > blue_ratio and green_ratio > 0.15:
+        return "green"
+    return "unk"
+
+
+# -------------------------------------------------------
 # YOLO 推理（实时模式用）
 # -------------------------------------------------------
 
@@ -253,10 +283,15 @@ def process_image(model, img, out_w=94, out_h=24):
 def batch_convert_with_gt(file_list, out_dir, tag):
     """
     从 CCPD 文件名解析 GT 四角点，直接做透视变换。
-    不需要 YOLO，速度更快，倾斜校正完全准确。
+    输出目录结构：OUTPUT_DIR / {blue|green|unk} / {train|val|test} / *.jpg
+    out_dir 传入 OUTPUT_DIR/split，函数自动推断 split 并重组路径。
     """
-    os.makedirs(out_dir, exist_ok=True)
+    base_dir = os.path.dirname(out_dir)   # OUTPUT_DIR
+    split    = os.path.basename(out_dir)  # train / val / test
+    for color in ('blue', 'green', 'unk'):
+        os.makedirs(os.path.join(base_dir, color, split), exist_ok=True)
     ok = skip = 0
+    cnt = {'blue': 0, 'green': 0, 'unk': 0}
     total = len(file_list)
     for i, (src_path, fname) in enumerate(file_list):
         if not os.path.isfile(src_path):
@@ -271,16 +306,18 @@ def batch_convert_with_gt(file_list, out_dir, tag):
         if img is None:
             skip += 1; continue
 
-        # corners 是图像坐标系的 rb→lb→lt→rt，直接透视变换 + 图像增强
-        # 亮度在原图四角点区域内计算，避免 warp 后失真
+        warped = perspective_warp(img, corners)
         mean_l = roi_mean_l(img, corners)
-        out = enhance_plate(perspective_warp(img, corners), mean_l)
-        dst = os.path.join(out_dir, '{}.jpg'.format(plate_text))
+        out    = enhance_plate(warped, mean_l)
+        color  = hsv_classify(out)    # 增强后再分类，暗图颜色恢复后更准
+        dst    = os.path.join(base_dir, color, split,
+                              '{}_{:06d}.jpg'.format(plate_text, i))
         cv2.imencode('.jpg', out)[1].tofile(dst)
         ok += 1
+        cnt[color] += 1
         if (i + 1) % 500 == 0 or (i + 1) == total:
-            print('  [{}] {}/{} | ok={} skip={}'.format(
-                tag, i + 1, total, ok, skip))
+            print('  [{}] {}/{} | ok={} skip={} blue={} green={} unk={}'.format(
+                tag, i + 1, total, ok, skip, cnt['blue'], cnt['green'], cnt['unk']))
     return ok
 
 
