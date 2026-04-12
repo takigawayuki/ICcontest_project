@@ -110,8 +110,17 @@ visualize_preprocess.py
 yolo_persp_crop.py：ccpd转lpr
 visualize_persp.py：最小测试脚本，可视化的是图像预处理，跟分类没关系
 
+2026-4-9
+blue_run3:
+Final test Accuracy:
+[Info] Test Accuracy: 0.5110312764158919 [72546:38950:30464:141960]
+[Info] Test Speed: 0.0003830062856243106s 1/141982
 
-
+LPR_DATA_PERSP2：
+颜色	训练集	验证集	 测试集
+蓝牌	100,000	99,996	141,982
+绿牌	5,769	1,001	5,006
+合计	105,769	100,997	146,988
 
 
 

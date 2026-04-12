@@ -48,13 +48,13 @@ def adjust_learning_rate(optimizer, cur_epoch, base_lr, lr_schedule):
 
 def get_parser():
     parser = argparse.ArgumentParser(description='parameters to train net')
-    parser.add_argument('--max_epoch', default=50, help='epoch to train the network')
+    parser.add_argument('--max_epoch', default=100, help='epoch to train the network')
     parser.add_argument('--img_size', default=[94, 24], help='the image size')
-    parser.add_argument('--train_img_dirs', default="C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\LPR_DATA_PERSP\\blue\\train", help='the train images path')
-    parser.add_argument('--test_img_dirs', default="C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\LPR_DATA_PERSP\\blue\\test", help='the test images path')
+    parser.add_argument('--train_img_dirs', default="C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\LPR_DATA_PERSP2\\blue\\train", help='the train images path')
+    parser.add_argument('--test_img_dirs', default="C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\LPR_DATA_PERSP2\\blue\\test", help='the test images path')
     parser.add_argument('--dropout_rate', default=0.5, help='dropout rate.')
     parser.add_argument('--learning_rate', default=0.0001, help='base value of learning rate.')
-    parser.add_argument('--lpr_max_len', default=8, help='license plate number max length.')
+    parser.add_argument('--lpr_max_len', default=7, help='license plate number max length.')
     parser.add_argument('--train_batch_size', default=128, help='training batch size.')
     parser.add_argument('--test_batch_size', default=120, help='testing batch size.')
     parser.add_argument('--phase_train', default=True, type=bool, help='train or test phase flag.')
@@ -65,10 +65,11 @@ def get_parser():
     parser.add_argument('--test_interval', default=2000, type=int, help='interval for evaluate')
     parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
     parser.add_argument('--weight_decay', default=2e-5, type=float, help='Weight decay for SGD')
-    parser.add_argument('--lr_schedule', default=[4, 8, 12, 14, 16], help='schedule for learning rate.')
-    parser.add_argument('--save_folder', default='./weights/blue_run1/', help='Location to save checkpoint models')
-    parser.add_argument('--pretrained_model', default='./weights/Final_LPRNet_model.pth', help='pretrained base model')
-    # parser.add_argument('--pretrained_model', default='', help='pretrained base model')
+    # parser.add_argument('--lr_schedule', default=[4, 8, 12, 14, 16], help='schedule for learning rate.')
+    parser.add_argument('--lr_schedule', default=[20, 40, 60, 80, 100], help='schedule for learning rate.')
+    parser.add_argument('--save_folder', default='./weights/blue_run5/', help='Location to save checkpoint models')
+    # parser.add_argument('--pretrained_model', default='./weights/Final_LPRNet_model.pth', help='pretrained base model')
+    parser.add_argument('--pretrained_model', default='', help='pretrained base model')
 
     args = parser.parse_args()
 
@@ -139,7 +140,8 @@ def train():
     epoch_size = len(train_dataset) // args.train_batch_size
     max_iter = args.max_epoch * epoch_size
 
-    ctc_loss = nn.CTCLoss(blank=len(CHARS)-1, reduction='mean') # reduction: 'none' | 'mean' | 'sum'
+    # ctc_loss = nn.CTCLoss(blank=len(CHARS)-1, reduction='mean') # reduction: 'none' | 'mean' | 'sum'
+    ctc_loss = nn.CTCLoss(blank=len(CHARS)-1, reduction='mean', zero_infinity=True)
 
     if args.resume_epoch > 0:
         start_iter = args.resume_epoch * epoch_size
@@ -163,6 +165,13 @@ def train():
         start_time = time.time()
         # load train data
         images, labels, lengths = next(batch_iterator)
+
+        if iteration == 0:
+            print("\n=== Train Debug ===")
+            print("labels shape:", labels.shape)
+            print("lengths:", lengths[:10])
+
+
         # labels = np.array([el.numpy() for el in labels]).T
         # print(labels)
         # get ctc parameters
@@ -182,11 +191,19 @@ def train():
         log_probs = logits.permute(2, 0, 1) # for ctc loss: T x N x C
         # print(labels.shape)
         log_probs = log_probs.log_softmax(2).requires_grad_()
+
+        if iteration == 0:  # 仅在训练开始时打印一次
+            print("logits shape:", logits.shape)  # 打印 logits 的 shape (N, C, T)
+            print("log_probs shape:", log_probs.shape)  # 打印经过 permute 后的 log_probs 的 shape
+
         # log_probs = log_probs.detach().requires_grad_()
         # print(log_probs.shape)
         # backprop
         optimizer.zero_grad()
         loss = ctc_loss(log_probs, labels, input_lengths=input_lengths, target_lengths=target_lengths)
+        
+        loss = torch.clamp(loss, min=0)  # 加这行，这行就有一个问题，就是如果loss为负数了，就直接把它置为0了，这样就没有梯度了，可能会导致训练停滞了，所以这个问题需要注意一下。
+
         if loss.item() == np.inf:
             continue
         loss.backward()
@@ -236,9 +253,17 @@ def Greedy_Decode_Eval(Net, datasets, args):
         preb_labels = list()
         for i in range(prebs.shape[0]):
             preb = prebs[i, :, :]
+
+            if i < 1:
+                print("\nraw argmax sequence:")
+
             preb_label = list()
             for j in range(preb.shape[1]):
                 preb_label.append(np.argmax(preb[:, j], axis=0))
+
+                if i < 1:
+                    print(preb_label)
+
             no_repeat_blank_label = list()
             pre_c = preb_label[0]
             if pre_c != len(CHARS) - 1:
@@ -252,6 +277,16 @@ def Greedy_Decode_Eval(Net, datasets, args):
                 pre_c = c
             preb_labels.append(no_repeat_blank_label)
         for i, label in enumerate(preb_labels):
+
+            # ⭐⭐⭐ 加这里
+            if i < 5:
+                gt_str = ''.join([CHARS[int(x)] for x in targets[i]])
+                pred_str = ''.join([CHARS[int(x)] for x in label])
+
+                print("\n=== Test Debug ===")
+                print("GT  :", gt_str)
+                print("Pred:", pred_str)
+
             if len(label) != len(targets[i]):
                 Tn_1 += 1
                 continue

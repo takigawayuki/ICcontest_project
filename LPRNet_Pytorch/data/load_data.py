@@ -1,3 +1,4 @@
+from cProfile import label
 from os import path
 
 from torch.utils.data import *
@@ -7,15 +8,28 @@ import random
 import cv2
 import os
 
-CHARS = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
-         '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
-         '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
+# CHARS = ['京', '沪', '津', '渝', '冀', '晋', '蒙', '辽', '吉', '黑',
+#          '苏', '浙', '皖', '闽', '赣', '鲁', '豫', '鄂', '湘', '粤',
+#          '桂', '琼', '川', '贵', '云', '藏', '陕', '甘', '青', '宁',
+#          '新',
+#          '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
+#          'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
+#          'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
+#          'W', 'X', 'Y', 'Z', 'I', 'O', '-'
+#          ]
+
+
+CHARS = ['京','沪','津','渝','冀','晋','蒙','辽','吉','黑',
+         '苏','浙','皖','闽','赣','鲁','豫','鄂','湘','粤',
+         '桂','琼','川','贵','云','藏','陕','甘','青','宁',
          '新',
-         '0', '1', '2', '3', '4', '5', '6', '7', '8', '9',
-         'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K',
-         'L', 'M', 'N', 'P', 'Q', 'R', 'S', 'T', 'U', 'V',
-         'W', 'X', 'Y', 'Z', 'I', 'O', '-'
-         ]
+         '0','1','2','3','4','5','6','7','8','9',
+         'A','B','C','D','E','F','G','H','J','K',
+         'L','M','N','P','Q','R','S','T','U','V',
+         'W','X','Y','Z',
+         '-'        # CTC blank token
+        ]   
+
 
 CHARS_DICT = {char:i for i, char in enumerate(CHARS)}
 
@@ -35,6 +49,8 @@ class LPRDataLoader(Dataset):
 
     def __len__(self):
         return len(self.img_paths)
+    
+    # print("被调用了")
 
     def __getitem__(self, index):
         filename = self.img_paths[index]
@@ -50,12 +66,50 @@ class LPRDataLoader(Dataset):
 
         basename = os.path.basename(filename)
         imgname, suffix = os.path.splitext(basename)
-        imgname = imgname.split("-")[0].split("_")[0]
+        # imgname = imgname.split("-")[0].split("_")[0]
+
+        # ✅ 提取车牌号
+        # label_str = imgname.split("-")[0].split("_")[0]
+
+        # ✅ 打印车牌号
+        # print(label_str) 
+
+        label_str = imgname.split("_")[0]
+
+        # ⭐⭐⭐ 加这里
+        if index < 10:
+            print("=== Dataset Debug ===")
+            print("文件名:", filename)
+            print("标签:", label_str)
+            print("长度:", len(label_str))
+
+        # ❗ 只打印异常
+        if len(label_str) != 7:
+            # print("长度错误:", label_str)
+            print("\n[长度错误]")
+            print("路径:", filename)
+            print("文件名:", imgname)
+            print("提取标签:", label_str)
+            print("长度:", len(label_str))
+
+        for c in label_str:
+            if c not in CHARS_DICT:
+                # print("非法字符:", label_str)
+                print("\n[非法字符]")
+                print("路径:", filename)
+                print("文件名:", imgname)
+                print("提取标签:", label_str)
+                print("非法字符:", c)
+
         label = list()
-        for c in imgname:
+        # for c in imgname:
+        for c in label_str:
             # one_hot_base = np.zeros(len(CHARS))
             # one_hot_base[CHARS_DICT[c]] = 1
             label.append(CHARS_DICT[c])
+            
+            if index < 10:
+                print("编码:", label)
 
         if len(label) == 8:
             if self.check(label) == False:
