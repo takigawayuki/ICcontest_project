@@ -84,7 +84,7 @@ class LPRDataLoader(Dataset):
             print("长度:", len(label_str))
 
         # ❗ 只打印异常
-        if len(label_str) != 7:
+        if len(label_str) != self.lpr_max_len:
             # print("长度错误:", label_str)
             print("\n[长度错误]")
             print("路径:", filename)
@@ -113,8 +113,11 @@ class LPRDataLoader(Dataset):
 
         if len(label) == 8:
             if self.check(label) == False:
-                print(imgname)
-                assert 0, "Error label ^~^!!!"
+
+                # print(imgname)
+                # assert 0, "Error label ^~^!!!"
+
+                print("[非标格式，跳过校验]", imgname)  # 极少量非标数据，不中断训练 绿牌
 
         return Image, label, len(label)
 

@@ -27,7 +27,7 @@ BASE_DIR     = r"c:\Users\Y9000P\Downloads\2026ICContest\ICcontest_project"
 YOLO_MODEL   = os.path.join(BASE_DIR, r"runs\new_plate_detect_merged\weights\best.pt")
 CCPD2019_DIR = r"D:\Tempcode\26IC\车牌数据集\中国车牌\CCPD2019"
 CCPD2020_DIR = r"D:\Tempcode\26IC\车牌数据集\中国车牌\CCPD2020\ccpd_green"
-OUTPUT_DIR   = os.path.join(BASE_DIR, "LPR_DATA_PERSP2")
+OUTPUT_DIR   = os.path.join(BASE_DIR, "re_LPR_DATA_PERSP")
 YOLO_CONF    = 0.3
 PAD          = 0.08
 # ====================
@@ -309,7 +309,7 @@ def batch_convert_with_gt(file_list, out_dir, tag, color):
         mean_l = roi_mean_l(img, corners)
         out    = enhance_plate(warped, mean_l)
         dst    = os.path.join(base_dir, color, split,
-                              '{}_{:06d}.jpg'.format(plate_text, i))
+                              '{}_{}_{:06d}.jpg'.format(plate_text, tag, i))
         cv2.imencode('.jpg', out)[1].tofile(dst)
         ok += 1
         if (i + 1) % 500 == 0 or (i + 1) == total:
@@ -332,13 +332,47 @@ def collect_ccpd2020(split):
 
 
 def main():
-    print('使用 CCPD GT 四角点批量生成训练数据（无需 YOLO，倾斜校正精确）...')
-    for split in ['train', 'val', 'test']:
-        out_dir = os.path.join(OUTPUT_DIR, split)
-        print('\n========== {} =========='.format(split))
-        n1 = batch_convert_with_gt(collect_ccpd2019(split), out_dir, 'CCPD2019', color='blue')
-        n2 = batch_convert_with_gt(collect_ccpd2020(split), out_dir, 'CCPD2020', color='green')
-        print('  合计: {}'.format(n1 + n2))
+    import random
+    random.seed(42)
+
+    print('生成 re_LPR_DATA_PERSP（新分法）...')
+    print('  蓝牌：base train + base val 全给 train，hard test 80%→train / 20%→test')
+    print('  绿牌：train + val 全给 train，test 给 test')
+
+    # ===== 蓝牌 CCPD2019 =====
+
+    # base train.txt（100K）→ 全部到 train
+    files = collect_ccpd2019('train')
+    print('\n[蓝牌 base_train] {} 张 → train'.format(len(files)))
+    n = batch_convert_with_gt(files, os.path.join(OUTPUT_DIR, 'train'), 'btrain', color='blue')
+    print('  ok={}'.format(n))
+
+    # base val.txt（~100K）→ 全部到 train
+    files = collect_ccpd2019('val')
+    print('\n[蓝牌 base_val] {} 张 → train'.format(len(files)))
+    n = batch_convert_with_gt(files, os.path.join(OUTPUT_DIR, 'train'), 'bval', color='blue')
+    print('  ok={}'.format(n))
+
+    # hard test.txt（~142K）→ 随机 80% 到 train，20% 到 test
+    hard = collect_ccpd2019('test')
+    random.shuffle(hard)
+    cut = int(len(hard) * 0.8)
+    hard_train, hard_test = hard[:cut], hard[cut:]
+    print('\n[蓝牌 hard] {} 张 → train:{}, test:{}'.format(
+        len(hard), len(hard_train), len(hard_test)))
+    n1 = batch_convert_with_gt(hard_train, os.path.join(OUTPUT_DIR, 'train'), 'htrain', color='blue')
+    n2 = batch_convert_with_gt(hard_test,  os.path.join(OUTPUT_DIR, 'test'),  'htest',  color='blue')
+    print('  train ok={}, test ok={}'.format(n1, n2))
+
+    # ===== 绿牌 CCPD2020 =====
+    for src_split, dst_split, tag in [('train', 'train', 'gtrain'),
+                                       ('val',   'train', 'gval'),
+                                       ('test',  'test',  'gtest')]:
+        files = collect_ccpd2020(src_split)
+        print('\n[绿牌 {}] {} 张 → {}'.format(src_split, len(files), dst_split))
+        n = batch_convert_with_gt(files, os.path.join(OUTPUT_DIR, dst_split), tag, color='green')
+        print('  ok={}'.format(n))
+
     print('\n完成！输出目录: {}'.format(OUTPUT_DIR))
 
 
