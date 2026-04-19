@@ -107,7 +107,7 @@ preprocess_fpga_流程说明.md
 visualize_preprocess.py
 效果很差基本没啥用
 
-yolo_persp_crop.py：ccpd转lpr
+yolo_persp_crop.py：ccpd转lpr,而且后面直接取消了分类
 visualize_persp.py：最小测试脚本，可视化的是图像预处理，跟分类没关系
 
 2026-4-9
@@ -175,11 +175,15 @@ green_re_run1
 [Info] Test Accuracy: 0.8106 [4053:288:659:5000]
 [Info] Test Speed: 0.0012764875002017843s 1/5006
 
+diff_pth_vs_onnx:
+由于在对比的时候有些不知名的错误
+2.1 修改 LPRNet 的 maxpool_3d 目前工具链暂不支持 maxpool_3d，可用 maxpool_2d 实现 maxpool_3d。
+     修改方式可参考 tools/LPRNet.py 是不是这个的问题
+开源上面的是这么说的
+https://github.com/sophgo/sophon-demo/tree/release/sample/LPRNet
 
-
-
-
-
+lpr导出onnx、验证、pipeline全部参考：
+https://zhuanlan.zhihu.com/p/610009009
 
 
 /*************************************************************/
