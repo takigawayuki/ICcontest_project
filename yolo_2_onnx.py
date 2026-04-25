@@ -6,13 +6,13 @@ model.export(
     format='onnx',
     opset=12,
     simplify=True,
-    dynamic=True,
-    nms=True   # ✅ 打开 NMS
+    dynamic=False,  # ✅ 关闭动态输入（输入尺寸固定为640x640）
+    nms=False       # ✅ 关闭 NMS
 )
 
 # NMS（Non-Maximum Suppression，非极大值抑制）
 # 👉 用来 “去掉重复框，只保留最靠谱的那个框”
-# 默认打开了 NMS，输出的 ONNX 模型中包含了 NMS 的计算图，这样在推理时就不需要再单独实现 NMS 了
+# 默认关闭了 NMS，输出的 ONNX 模型中不包含 NMS 的计算图，这样在推理时就需要单独实现 NMS 了
 
 """
 
