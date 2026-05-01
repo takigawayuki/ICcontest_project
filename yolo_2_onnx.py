@@ -7,25 +7,11 @@ model.export(
     opset=12,
     simplify=True,
     dynamic=False,  # ✅ 关闭动态输入（输入尺寸固定为640x640）
-    nms=False       # ✅ 关闭 NMS
+    nms=True       # ✅ 启用 NMS
 )
 
 # NMS（Non-Maximum Suppression，非极大值抑制）
 # 👉 用来 “去掉重复框，只保留最靠谱的那个框”
 # 默认关闭了 NMS，输出的 ONNX 模型中不包含 NMS 的计算图，这样在推理时就需要单独实现 NMS 了
 
-"""
-
-dynamic = False,  # ❗默认是关闭 
-nms = False       # ❗默认也是关闭（重点！）
-
-import cv2
-
-# 画框要自己画
-for det in preds:
-    x1, y1, x2, y2, score, cls = det
-
-    if score > 0.3:
-        cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,0), 2)
-
-"""
+# 关闭动态输入（dynamic=False）后，导出的 ONNX 模型将固定输入尺寸为 640x640，这样在推理时就不需要进行动态调整了
