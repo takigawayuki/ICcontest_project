@@ -4,8 +4,10 @@
 
 # YOLO
 *.txt
-!现存的数据集说明.txt
-!requirements_LPR.txt
+! 现存的数据集说明.txt
+! requirements_LPR.txt
+！串联模型文件解析和部署.txt
+
 
 # Python缓存
 __pycache__/

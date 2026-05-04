@@ -3,7 +3,7 @@ import numpy as np
 import onnxruntime as ort
 
 # ====== 1. 加载模型 ======
-onnx_path = r"C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\runs\\new_plate_detect_merged\\weights\\best.onnx"
+onnx_path = r"C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\runs\\new_plate_detect_merged\\weights\\best_backup.onnx"
 session = ort.InferenceSession(onnx_path)
 
 input_name = session.get_inputs()[0].name

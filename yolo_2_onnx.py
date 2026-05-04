@@ -1,13 +1,14 @@
 from ultralytics import YOLO
 
-model = YOLO(r'C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\runs\\new_plate_detect_merged\\weights\\best.pt')
+model = YOLO(r'C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\runs\\new_plate_detect_merged\\weights\\best_notnms.pt')
 
 model.export(
     format='onnx',
     opset=12,
     simplify=True,
-    dynamic=False,  # ✅ 关闭动态输入（输入尺寸固定为640x640）
-    nms=True       # ✅ 启用 NMS
+    dynamic=False,      # ✅ 关闭动态输入（输入尺寸固定为640x640）
+    nms=True,           # ✅ 启用 NMS
+    name='best_nms'
 )
 
 # NMS（Non-Maximum Suppression，非极大值抑制）
