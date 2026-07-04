@@ -1,0 +1,320 @@
+/*************************************************************/
+问题
+
+
+
+
+/*************************************************************/
+CCPD2019（按 splits/ 划分文件统计）：
+train: 100,000 张
+val: 99,996 张
+test: 141,982 张
+合计: 341,978 张
+
+CCPD2020 / ccpd_green（按目录统计）：
+train: 5,769 张
+val: 1,001 张
+test: 5,006 张
+合计: 11,776 张
+
+数据集	      train	 val	      test
+CCPD2019_YOLO	103,021	99,996	100,579 已恢复 -> 141,982
+CCPD2020_YOLO	5,769	1,001	5,006
+PS:注意 CCPD2019 的 test 是 100,579，比说明文件里记录的 141,982 少了不少，
+     说明转换时有部分图片被跳过了（坐标不合法或文件缺失）。
+
+
+test.txt 里面没有 ccpd_base，
+     只包含了其他6个子集：blur、challenge、db、fn、rotate、tilt，共 141982 条。
+所以这个 test.txt 是专门用来测试模型在各种困难场景下的泛化能力的，
+     base 数据集通常是用来训练/验证的，不放进测试集里。
+     如果你期望 test.txt 包含 base 的话，那确实是缺失的。
+
+train.txt — 10万张，全是 ccpd_base，用于训练 
+val.txt — 约10万张，全是 ccpd_base，用于训练时验证 
+test.txt — 约14.2万张，全是困难场景（blur/challenge/db/fn/rotate/tilt），用于测试泛化能力
+
+然后每个困难子集还有单独的 txt：
+ccpd_blur.txt — 20611张，模糊场景
+ccpd_challenge.txt — 50003张，综合困难场景
+ccpd_db.txt — 10132张，暗光/过曝场景
+ccpd_fn.txt — 20967张，远距离/小目标
+ccpd_rotate.txt — 10053张，旋转车牌
+ccpd_tilt.txt — 30216张，倾斜车牌
+所以这个数据集的设计思路是：用 base 训练，用各种困难场景测试泛化。单独的子集 txt 是为了让你能分场景分析模型的弱点在哪。
+
+
+CCPD2019 数据集统计如下：
+各子集图片数量
+子集	图片数量	说明
+ccpd_base	199,996	基础场景
+ccpd_challenge	50,003	高难度场景
+ccpd_tilt	30,216	倾斜角度
+ccpd_fn	20,967	远近距离
+ccpd_blur	20,611	模糊图像
+ccpd_rotate	10,053	旋转
+ccpd_db	10,132	亮度变化
+ccpd_weather	9,999	恶劣天气
+ccpd_np	3,036	无牌照
+合计	355,013	
+
+splits 划分
+划分	数量
+train.txt	100,000
+val.txt	99,996
+test.txt	141,982
+ccpd_challenge.txt	50,003
+ccpd_tilt.txt	30,216
+ccpd_fn.txt	20,967
+ccpd_blur.txt	20,611
+ccpd_rotate.txt	10,053
+ccpd_db.txt	10,132
+总图片量约 35.5 万张，train/val 合计约 20 万，test 约 14.2 万。
+
+
+
+
+
+
+/*************************************************************/
+2026-4-1
+LPR环境所依赖的包
+environment_LPR.yml：conda env export > environment_LPR.yml
+requirements_LPR.txt：conda run -n LPR pip freeze > requirements_LPR.txt
+
+yolo评估/测试脚本
+yolo val model=runs/new_plate_detect_merged/weights/best.pt data=CCPD2020_YOLO/plate2020.yaml split=test
+yolo val model=runs/new_plate_detect_merged/weights/best.pt data=CCPD2019_YOLO/plate2019.yaml split=test
+
+2020：
+P (Precision) = 0.997
+R (Recall)    = 0.988
+mAP50         = 0.993
+mAP50-95      = 0.891
+
+2019：
+P = 0.976
+R = 0.982
+mAP50 = 0.985
+mAP50-95 = 0.621
+
+
+
+/*************************************************************/
+2026-4-7
+preprocess_fpga.py
+preprocess_fpga_流程说明.md
+visualize_preprocess.py
+效果很差基本没啥用
+
+yolo_persp_crop.py：ccpd转lpr,而且后面直接取消了分类
+visualize_persp.py：最小测试脚本，可视化的是图像预处理，跟分类没关系
+
+2026-4-9
+blue_run3:
+Final test Accuracy:
+[Info] Test Accuracy: 0.5110312764158919 [72546:38950:30464:141960]
+[Info] Test Speed: 0.0003830062856243106s 1/141982
+
+LPR_DATA_PERSP2：
+颜色	训练集	验证集	 测试集
+蓝牌	100,000	99,996	141,982
+绿牌	5,769	1,001	5,006
+合计	105,769	100,997	146,988
+
+
+2026-4-12
+blue_run4
+[Info] Test Accuracy: 0.4914235377026075 [69733:43242:28925:141900]
+[Info] Test Speed: 0.0004953615221215742s 1/141982
+
+blue_run5
+[Info] Test Accuracy: 0.4252465483234714 [60368:50913:30679:141960]
+[Info] Test Speed: 0.0003388276026743327s 1/141982
+
+re_yolo_persp_crop.py：最终蓝牌训练集约 314K 张，测试集约 28K 张（全是困难场景）。
+
+re_LPR_DATA_PERSP：
+颜色	train	test
+蓝牌	313,581	28,397
+绿牌	6,770	5,006
+
+green_run1
+[Info] Test Accuracy: 0.8264227642276423 [4066:392:462:4920]
+[Info] Test Speed: 0.0010238134332337572s 1/5006
+
+
+2026-4-13
+blue_re_run1
+[Info] Test Accuracy: 0.9210098870056497 [26083:683:1554:28320]
+[Info] Test Speed: 0.0004273754327016871s 1/28397
+
+经过test_LPRNet:
+[Info] Test Accuracy: 0.9548343904157858 [135491:2222:4187:141900]
+[Info] Test Speed: 0.0003296558658581422s 1/141982
+
+说明：
+Error label, Please check!
+[非标格式，跳过校验] 沪A9B8211_gtrain_000268
+Error label, Please check!
+[非标格式，跳过校验] 皖A026360_gtrain_001487
+这两条信息的意思：
+这些是 8 位长度的标签，但第 3 个字符不是 'D' 或 'F'（新能源车牌规范要求位置 2 必须是 D 或 F），例如：
+沪A9B8211 → 位置 2 是 '9'，不是 D/F
+皖A026360 → 位置 2 是 '0'，不是 D/F
+根本原因：CCPD2020 里有极少量标注异常的数据，decode_plate() 解码出来的字符不符合新能源车牌格式。
+影响：因为之前已经把 assert 改成了打印警告，这些样本不会导致崩溃，会继续参与训练。
+      由于数量极少（绿牌共 6,770 张，这类异常应该只有几十张），对最终精度几乎没有影响，忽略即可。
+
+
+2026-4-14
+green_re_run1
+[Info] Test Accuracy: 0.8103658536585366 [3987:284:649:4920]
+[Info] Test Speed: 0.0007315107788317593s 1/5006
+经过test测试之后：
+[Info] Test Accuracy: 0.8106 [4053:288:659:5000]
+[Info] Test Speed: 0.0012764875002017843s 1/5006
+
+diff_pth_vs_onnx:
+由于在对比的时候有些不知名的错误
+2.1 修改 LPRNet 的 maxpool_3d 目前工具链暂不支持 maxpool_3d，可用 maxpool_2d 实现 maxpool_3d。
+     修改方式可参考 tools/LPRNet.py 是不是这个的问题
+开源上面的是这么说的
+https://github.com/sophgo/sophon-demo/tree/release/sample/LPRNet
+
+lpr导出onnx、验证、pipeline全部参考：
+https://zhuanlan.zhihu.com/p/610009009
+
+
+
+---
+2026-5-5
+LPRNet_Pytorch\weights\green_re_run2
+[Info] Test Accuracy: 0.8260162601626017 [4064:308:548:4920]
+[Info] Test Speed: 0.0009054915694489367s 1/5006
+
+颜色	train	test
+蓝牌	313,581	28,397
+绿牌	138,345	5,006
+
+LPRNet_Pytorch\weights\green_re_run3
+[Info] Test Accuracy: 0.8642276422764228 [4252:303:365:4920]
+[Info] Test Speed: 0.0008099557302782072s 1/5006
+
+
+/*************************************************************/
+重新训练的完整步骤
+① 删除旧的 CCPD2019_YOLO 目录 已经删除并更正
+② 运行修正后的 ccpd2019_to_yolo.py 已运行
+③ 更新 plate_merged.yaml（train 数量变了） 已做，new_plate_merged.yaml 
+④ 更新 VAL_MIXED（重新抽样） 未做 
+⑤ 重新运行 train.py 未做
+
+
+
+
+
+/*************************************************************/
+下一步是 LPRNet 字符识别。
+同样有两个选择：
+| 选项 | 说明 | 时间 |
+|------|------|------|
+| A. 用现成预训练模型 | 直接下载已训练好的 LPRNet 权重 | 快，今天能跑通 |
+| B. 自己用 CCPD 训练 | 用 CCPD 文件名里的字符标注从头训练 | 慢，但可控 |
+
+AI生成的文件：
+infer_single.py：应对中文文件名乱码问题 准确率：894/1000 = 89.4%
+pipeline.py
+测试 LPRNet 独立准确率：
+python pipeline.py --dir LPRNet_Pytorch/data/test --lpr-only:
+准确率: 894/1000 = 89.4%
+
+LPR_DATA里面我还 “没有” 重新运行ccpd2lpr.py来生成test 已运行
+
+CCPD2019 蓝牌有 7 个车牌字符
+CCPD2020 绿牌有 8 个
+
+LPR_DATA/
+├── train/   ← CCPD2019 train(100,000) + CCPD2020 train(5,769)  ≈ 105,769 张
+├── val/     ← CCPD2019 val(99,996)   + CCPD2020 val(1,001)    ≈ 100,997 张
+└── test/    ← CCPD2019 test(141,982) + CCPD2020 test(5,006)   ≈ 146,988 张
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*************************************************************/
+第二次训练：
+
+ultralytics-main: yolov8和yolov26仓库
+LPRNet_Pytorch：中文车牌 LPRNet 实现
+
+中国车牌
+CCPD2020 绿牌
+CCPD2019 蓝牌 不同天气条件
+
+ccpd2yolo.py CCPD2020转化为YOLO格式脚本
+ccpd2019_to_yolo.py CCPD2019转化为YOLO格式脚本（trian：21w，未修正测试集，但是也没有留档）
+
+CCPD_YOLO：CCPD2020转化为YOLO格式
+CCPD2019_YOLO：CCPD2019转化为YOLO格式
+
+plate_merged.yaml，同时指向CCPD2020和CCPD2019两个数据集目录  train：21.9万张
+
+runs/plate_detect 单独CCPD2020绿牌的训练结果
+runs/plate_detect_merged 绿牌和蓝牌全部的训练结果
+
+runs\plate_detect_merged：213k（未把测试集划分出去）
+
+
+evaluate.py 看绿牌和蓝牌各自的效果
+========================================
+对比总结
+========================================
+绿牌 mAP50: 0.9940
+蓝牌 mAP50: 0.9950
+
+runs/detect/：
+当你运行 evaluate.py 时，脚本里调用了 model.val()，ultralytics 会自动把验证结果保存到 runs/detect/val*/
+
+train 集	教科书	未泄露。模型是根据这些干净的数据学习的。
+val 集	模拟考	未泄露。训练过程中用来挑选 “最好权重（best.pt）” 的依据是干净的。
+test 集	期末考	已泄露（不可信）。指测试集的数据可能不小心掉进了训练集里，或者标注被提前知道了。
+/*************************************************************/
+
+
+
+
+
+
+
+
+/*************************************************************/
+第三次：
+ccpd2019_to_yolo.py：新版 train 10万
+
+
+
+/*************************************************************/
