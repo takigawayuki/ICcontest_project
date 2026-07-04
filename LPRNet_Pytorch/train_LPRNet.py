@@ -49,10 +49,11 @@ def adjust_learning_rate(optimizer, cur_epoch, base_lr, lr_schedule):
 def get_parser():
     parser = argparse.ArgumentParser(description='parameters to train net')
     # parser.add_argument('--max_epoch', default=50, help='epoch to train the network') # 蓝牌 313k
-    parser.add_argument('--max_epoch', default=200, help='epoch to train the network') # 绿牌
+    parser.add_argument('--max_epoch', default=50, help='epoch to train the network') # 绿牌
     parser.add_argument('--img_size', default=[94, 24], help='the image size')
     parser.add_argument('--train_img_dirs', default="C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\re_LPR_DATA_PERSP\\green\\train", help='the train images path')
     parser.add_argument('--test_img_dirs', default="C:\\Users\\Y9000P\\Downloads\\2026ICContest\\ICcontest_project\\re_LPR_DATA_PERSP\\green\\test", help='the test images path')
+    # parser.add_argument('--dropout_rate', default=0.5, help='dropout rate.')
     parser.add_argument('--dropout_rate', default=0.5, help='dropout rate.')
     parser.add_argument('--learning_rate', default=0.0001, help='base value of learning rate.')
     parser.add_argument('--lpr_max_len', default=8, help='license plate number max length.') # 绿牌
@@ -68,10 +69,10 @@ def get_parser():
     parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
     parser.add_argument('--weight_decay', default=2e-5, type=float, help='Weight decay for SGD')
     # parser.add_argument('--lr_schedule', default=[4, 8, 12, 14, 16], help='schedule for learning rate.')
-    parser.add_argument('--lr_schedule', default=[100, 150, 180, 220, 260], help='schedule for learning rate.')  # 绿牌
+    parser.add_argument('--lr_schedule', default=[30, 45, 55, 65, 75], help='schedule for learning rate.')  # 绿牌
     # parser.add_argument('--lr_schedule',default=[20, 40, 60, 80, 100], help='schedule for learning rate.') # 蓝牌
     # parser.add_argument('--lr_schedule', default=[30, 45, 55, 65, 75], help='schedule for learning rate.')  # 蓝牌 313K
-    parser.add_argument('--save_folder', default='./weights/green_re_run1/', help='Location to save checkpoint models')
+    parser.add_argument('--save_folder', default='./weights/green_re_run3/', help='Location to save checkpoint models')
     # parser.add_argument('--pretrained_model', default='./weights/Final_LPRNet_model.pth', help='pretrained base model')
     parser.add_argument('--pretrained_model', default='', help='pretrained base model')
 
@@ -206,7 +207,7 @@ def train():
         optimizer.zero_grad()
         loss = ctc_loss(log_probs, labels, input_lengths=input_lengths, target_lengths=target_lengths)
         
-        loss = torch.clamp(loss, min=0)  # 加这行，这行就有一个问题，就是如果loss为负数了，就直接把它置为0了，这样就没有梯度了，可能会导致训练停滞了，所以这个问题需要注意一下。
+        # loss = torch.clamp(loss, min=0)  # 加这行，这行就有一个问题，就是如果loss为负数了，就直接把它置为0了，这样就没有梯度了，可能会导致训练停滞了，所以这个问题需要注意一下。
 
         if loss.item() == np.inf:
             continue
