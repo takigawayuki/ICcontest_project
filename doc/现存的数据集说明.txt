@@ -1,10 +1,4 @@
-/*************************************************************/
-问题
-
-
-
-
-/*************************************************************/
+/************************数据集介绍*****************************/
 CCPD2019（按 splits/ 划分文件统计）：
 train: 100,000 张
 val: 99,996 张
@@ -74,10 +68,7 @@ ccpd_db.txt	10,132
 
 
 
-
-
-/*************************************************************/
-2026-4-1
+/***********************实际操作2026-4-1****************************/
 LPR环境所依赖的包
 environment_LPR.yml：conda env export > environment_LPR.yml
 requirements_LPR.txt：conda run -n LPR pip freeze > requirements_LPR.txt
@@ -100,8 +91,7 @@ mAP50-95 = 0.621
 
 
 
-/*************************************************************/
-2026-4-7
+/***********************实际操作2026-4-7****************************/
 preprocess_fpga.py
 preprocess_fpga_流程说明.md
 visualize_preprocess.py
@@ -110,7 +100,9 @@ visualize_preprocess.py
 yolo_persp_crop.py：ccpd转lpr,而且后面直接取消了分类
 visualize_persp.py：最小测试脚本，可视化的是图像预处理，跟分类没关系
 
-2026-4-9
+
+
+/***********************实际操作2026-4-9****************************/
 blue_run3:
 Final test Accuracy:
 [Info] Test Accuracy: 0.5110312764158919 [72546:38950:30464:141960]
@@ -123,7 +115,8 @@ LPR_DATA_PERSP2：
 合计	105,769	100,997	146,988
 
 
-2026-4-12
+
+/***********************实际操作2026-4-12****************************/
 blue_run4
 [Info] Test Accuracy: 0.4914235377026075 [69733:43242:28925:141900]
 [Info] Test Speed: 0.0004953615221215742s 1/141982
@@ -144,7 +137,7 @@ green_run1
 [Info] Test Speed: 0.0010238134332337572s 1/5006
 
 
-2026-4-13
+/***********************实际操作2026-4-13****************************/
 blue_re_run1
 [Info] Test Accuracy: 0.9210098870056497 [26083:683:1554:28320]
 [Info] Test Speed: 0.0004273754327016871s 1/28397
@@ -167,7 +160,7 @@ Error label, Please check!
       由于数量极少（绿牌共 6,770 张，这类异常应该只有几十张），对最终精度几乎没有影响，忽略即可。
 
 
-2026-4-14
+/***********************实际操作2026-4-14****************************/
 green_re_run1
 [Info] Test Accuracy: 0.8103658536585366 [3987:284:649:4920]
 [Info] Test Speed: 0.0007315107788317593s 1/5006
@@ -187,8 +180,7 @@ https://zhuanlan.zhihu.com/p/610009009
 
 
 
----
-2026-5-5
+/***********************实际操作2026-5-5****************************/
 LPRNet_Pytorch\weights\green_re_run2
 [Info] Test Accuracy: 0.8260162601626017 [4064:308:548:4920]
 [Info] Test Speed: 0.0009054915694489367s 1/5006
@@ -202,6 +194,9 @@ LPRNet_Pytorch\weights\green_re_run3
 [Info] Test Speed: 0.0008099557302782072s 1/5006
 
 
+
+
+
 /*************************************************************/
 重新训练的完整步骤
 ① 删除旧的 CCPD2019_YOLO 目录 已经删除并更正
@@ -209,10 +204,6 @@ LPRNet_Pytorch\weights\green_re_run3
 ③ 更新 plate_merged.yaml（train 数量变了） 已做，new_plate_merged.yaml 
 ④ 更新 VAL_MIXED（重新抽样） 未做 
 ⑤ 重新运行 train.py 未做
-
-
-
-
 
 /*************************************************************/
 下一步是 LPRNet 字符识别。
@@ -247,24 +238,7 @@ LPR_DATA/
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/*************************************************************/
 /*************************************************************/
 第二次训练：
 
@@ -306,15 +280,133 @@ test 集	期末考	已泄露（不可信）。指测试集的数据可能不小�
 
 
 
-
-
-
-
-
 /*************************************************************/
 第三次：
 ccpd2019_to_yolo.py：新版 train 10万
 
 
 
-/*************************************************************/
+
+
+
+
+
+
+
+/***********************实际操作2026-7-7初赛的最终版，分区赛没改之前****************************/
+YOLO数据集
+数据集	      train	  val	 test	 总计
+CCPD2019_YOLO	103021	99996	141982	344999
+CCPD2020_YOLO	 5769	 1001	 5006	 11776
+
+---
+re_LPR_DATA_PERSP/
+├── blue/
+│   ├── train/
+│   └── test/
+└── green/
+    ├── train/
+    └── test/
+
+蓝牌来自原始 CCPD2019
+绿牌来自原始 CCPD2020/ccpd_green
+不是用 YOLO 检测框裁剪，而是直接从 CCPD 文件名解析 GT 四角点
+做透视变换，把车牌矫正成 94x24
+根据原图 ROI 亮度做自适应增强
+对应处理函数在：re_yolo_persp_crop.py
+
+后续追加绿牌脚本：cblprd_green_import.py
+它从 CBLPRD-330k_v1 里筛选新能源绿牌，然后复制到：re_LPR_DATA_PERSP/green/train/
+注意：这部分是 shutil.copy2 直接复制，不做透视矫正，也不做亮度增强。
+
+
+类别	           train	test	      合计
+蓝牌 blue	      313581	28397	341978
+绿牌 green	 138345	5006	     143351
+总计	           451926	33403	485329
+
+
+更细的来源拆分
+蓝牌：
+tag	      数量	            来源
+btrain	100000	CCPD2019 train → blue/train，透视矫正，光照补偿
+bval	     99996	CCPD2019 val → blue/train，透视矫正，光照补偿
+htrain	113585	CCPD2019 test 随机 80% → blue/train，透视矫正，光照补偿
+htest	28397	CCPD2019 test 随机 20% → blue/test，透视矫正，光照补偿
+
+绿牌：
+tag	     数量	                      来源
+gtrain	5769	      CCPD2020 train → green/train，透视矫正，光照补偿
+gval	     1001	      CCPD2020 val → green/train，透视矫正，光照补偿
+gtest	5006	      CCPD2020 test → green/test，透视矫正，光照补偿
+cbltrain	124917	 CBLPRD train 新能源绿牌 → green/train，直接复制
+cblval	6658	      CBLPRD val 新能源绿牌 → green/train，直接复制
+
+
+---
+YOLO训练
+new_plate_merged.yaml
+# CCPD2019_YOLO: 蓝牌  train 103,021  val 99,996  test 141,982
+#   - train/val 来自 ccpd_base（基础场景）
+#   - test 来自 blur/challenge/db/fn/rotate/tilt（困难场景，共 141,982 条）
+#
+# CCPD2020_YOLO: 绿牌  train 5,769    val 1,001   test 5,006
+#
+# 合计:               train 108,790   val 100,997
+
+# val 混合集（绿牌1001张 + 蓝牌1000张 = 2001张）
+
+训练的脚本文件在：train.py
+
+输出的结果在：runs\new_plate_detect_merged
+
+yolo评估/测试脚本
+yolo val model=runs/new_plate_detect_merged/weights/best.pt data=CCPD2020_YOLO/plate2020.yaml split=test
+yolo val model=runs/new_plate_detect_merged/weights/best.pt data=CCPD2019_YOLO/plate2019.yaml split=test
+
+2020：
+P (Precision) = 0.997
+R (Recall)    = 0.988
+mAP50         = 0.993
+mAP50-95      = 0.891
+
+2019：
+P = 0.976
+R = 0.982
+mAP50 = 0.985
+mAP50-95 = 0.621
+
+---
+LPR训练
+训练集：re_LPR_DATA_PERSP
+训练的脚本文件在：LPRNet_Pytorch\train_LPRNet.py
+测试的脚本文件在：LPRNet_Pytorch\test_LPRNet.py
+输出结果在：
+蓝牌：LPRNet_Pytorch\weights\blue_re_run1
+绿牌：LPRNet_Pytorch\weights\green_re_run3
+
+blue_re_run1
+[Info] Test Accuracy: 0.9210098870056497 [26083:683:1554:28320]
+[Info] Test Speed: 0.0004273754327016871s 1/28397
+
+LPRNet_Pytorch\weights\green_re_run3
+[Info] Test Accuracy: 0.8642276422764228 [4252:303:365:4920]
+[Info] Test Speed: 0.0008099557302782072s 1/5006
+
+---
+ccpd2lpr预处理：
+tools\pre_processing\re_yolo_persp_crop.py：ccpd转lpr,而且后面直接取消了分类
+debug\tools\visualize_persp.py：最小测试脚本，可视化的是图像预处理，跟分类没关系
+
+---
+测试文件
+test_yolo_onnx.py
+detect_onnx_pipeline.py
+
+
+
+
+
+/***********************实际操作2026-7-8****************************/
+2026 集创赛紫光同创杯参赛资料包 
+https://pan.baidu.com/s/141FFFxrK7sNYP70VZsAvdA 提取码: khcr
