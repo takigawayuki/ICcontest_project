@@ -298,6 +298,7 @@ YOLO数据集
 数据集	      train	  val	 test	 总计
 CCPD2019_YOLO	103021	99996	141982	344999
 CCPD2020_YOLO	 5769	 1001	 5006	 11776
+CCPD2020_YOLO 里面不包含 CBLPRD 里的绿牌
 
 ---
 re_LPR_DATA_PERSP/
@@ -410,3 +411,64 @@ detect_onnx_pipeline.py
 /***********************实际操作2026-7-8****************************/
 2026 集创赛紫光同创杯参赛资料包 
 https://pan.baidu.com/s/141FFFxrK7sNYP70VZsAvdA 提取码: khcr
+
+
+① 训练务必使用瑞芯微 fork 的 airockchip/ultralytics_yolov8（即第二节给的链接），而不是 Ultralytics 官方仓库。
+两者主要差异在 detect head 的导出实现 —— 官方版导出的 ONNX 接给 rknn-toolkit2 时会出现输出 shape 错配、量化精度异常等一连串问题，调到怀疑人生。
+
+② 修改默认激活函数为 ReLU（对 NPU 量化更友好）。
+YOLOv8 默认使用 SiLU 激活函数，虽然精度略高，但 SiLU 包含复杂的指数运算，
+在 NPU 上量化后会导致掉点或推理变慢。推荐将源码里的默认激活函数改为 ReLU。
+
+---
+yolo
+7位蓝牌CCPD2019_YOLO
+8位绿牌CCPD2020_YOLO（有一些CBLPRD的绿牌）
+特殊车牌CBLPRD
+
+lpr
+re_LPR_DATA_PERSP
+
+
+一张图片多张车牌
+行人检测（视频）
+
+
+7位蓝牌CCPD2019_YOLO
+     CBLPRD
+          普通蓝牌	157,920	23.08%
+8位绿牌CCPD2020_YOLO
+     CBLPRD
+          新能源小型车	4,052	23.69%
+          新能源大型车	2,606	15.24%
+          拖拉机绿牌	1,332	7.79%
+
+CBLPRD
+     单层黄牌	105,260	15.38%
+     双层黄牌	52,630	7.69%
+
+CBLPRD
+     黑色车牌	52,630	7.69%
+
+多车牌CRPD_multi
+
+车辆和行人检测BDD100K
+
+
+YOLO 多类别检测/分类
++ 按大类路由
++ 2~3 个 LPRNet 专用识别模型
++ 格式校验兜底
+
+YOLO 判断是 blue → 蓝牌 7 位模型
+YOLO 判断是 green → 绿牌 8 位模型
+YOLO 判断是 special → 特殊模型或规则兜底
+如果 YOLO 不确定 → 蓝绿两个模型都跑，用格式分数 + 置信度选择
+
+
+
+/***********************实际操作2026-7-11****************************/
+我的数据集路径在这里
+D:\Tempcode\26IC\车牌数据集\中国车牌
+D:\Tempcode\26IC\车牌数据集\中国车牌\WTS_DATASET_TEST
+

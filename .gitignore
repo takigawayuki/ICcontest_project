@@ -3,6 +3,16 @@
 *.jpeg
 *.png
 *.bmp
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+*.csv
+
+# Generated datasets and large local raw/converted datasets
+datasets/
+re_LPR_DATA*/
 
 # YOLO label/cache outputs
 *.txt
@@ -28,3 +38,14 @@ debug/
 *.pt
 *.pth
 *.onnx
+*.rknn
+*.engine
+*.tflite
+
+# Large archives and exported bundles
+*.zip
+*.7z
+*.rar
+*.tar
+*.tar.gz
+*.tgz
